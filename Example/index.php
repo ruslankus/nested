@@ -28,7 +28,7 @@ set_exception_handler(function ($exception) {
 $classLoader = new SplClassLoader('Interlab\NestedSets', '/../vendor/');
 $classLoader->register();*/
 
-require_once '/../lib/Interlab/NestedSets/Manager.php';
+require_once __DIR__ . '/lib/Manager.php';
 
 # test: child class
 class Nesty extends Interlab\NestedSets\Manager
