@@ -1,0 +1,417 @@
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=windows-1251">
+ <title>Дерево каталогов NESTED SETS (вложенные множества) и управление им / Печатная версия / GetInfo.Ru - Компьютерная библиотека</title>
+ <meta name="description" content="$anonce">
+ <meta name="keywords" content="">
+ <link rel="stylesheet" type="text/css" href="article610_files/getinfo.css">
+</head>
+
+<body topmargin="0" bottommargin="0" leftmargin="0" rightmargin="0" bgcolor="#FFFFFF" marginheight="0" marginwidth="0">
+
+<table align="center" border="0" cellpadding="0" cellspacing="0" width="100%">
+<tbody><tr>
+<td bgcolor="#E8A11A"><a href="http://www.getinfo.ru/"><img src="article610_files/popup_logo.gif" alt="GetInfo.Ru - Компьютерная библиотека" border="0" height="55" width="182"></a></td>
+<td class="addheader" align="right" bgcolor="#E8A11A">ВЕРСИЯ ДЛЯ ПЕЧАТИ&nbsp;&nbsp;&nbsp;</td>
+</tr>
+</tbody></table>
+
+<!-- Начало блока текста статьи -->
+<table align="center" border="0" cellpadding="3" cellspacing="2" width="97%">
+<tbody><tr>
+<td align="center" valign="top"><span class="doctitle">Дерево каталогов NESTED SETS (вложенные множества) и управление им</span>
+<br><a href="http://www.getinfo.ru/author309.html" class="docauthor">Сергей Томулевич</a>
+<br><a class="docauthor" href="mailto:phoinix@asit.ru">phoinix@asit.ru</a>
+
+<br><br><div align="right"><font class="docpages">Страницы: </font></div>
+<br><img src="article610_files/spacer.gif" height="5" width="1"></td>
+</tr><tr>
+<td valign="top"><p class="doctext" align="justify">О проблемах хранения деревьев в SQL базах данных вопрос можно не поднимать, просто сказать, что они есть. </p>
+<p>Прежде всего посмотрим, как выглядят деревья Nested Sets, как они организованы и в чем удобство их использования.</p>
+<div align="center"><img src="article610_files/610-1.gif" alt="" height="242" width="370"></div>
+<p>На схеме представлено дерево, описанное по всем правилам метода 
+"Вложенных множеств". Квадратами обозначены узлы дерева, синие цифры в 
+верхнем правом и верхнем левом углах узла - уровень и уникальный 
+идентификатор соответственно, а красные цифры в нижних углах - это левый
+ и правый ключ. Именно в этих двух цифрах - левом и правом ключе 
+заложена вся информация о дереве. И если информацию о ключах занести в 
+базу данных, то работа с деревом намного упрощается. Обратите внимание 
+на то, в каком порядке проставлены эти ключи. Если мысленно пройтись по 
+порядку от 1 до 32, то вы обойдете все узлы дерева слева направо. 
+Фактически это путь обхода всех узлов дерева слева направо.</p>
+<p>При использовании такой структуры дерева каталогов, очень сильно 
+упрощается выборка определенных элементов, таких как родительская ветка,
+ подчиненные узлы, вообще вся "ветка" в которой участвует наш узел. В 
+общем все гораздо проще увидеть на практике: </p>
+<p>Создадим таблицу, где мы будем хранить наше дерево:</p>
+<p><strong><font color="#0000FF">CREATE</font> my_tree</strong> (<br>
+  <strong>id </strong><font color="#FF00FF">INT</font>(10) <strong><font color="#0000FF">NOT NULL</font> </strong><font color="#FF00FF">AUTO_INCREMENT</font>,<br>
+  <strong>name</strong> <font color="#FF00FF">VARCHAR</font>(150) <strong><font color="#0000FF">NOT NULL</font></strong>,<br>
+<strong>left_key </strong><font color="#FF00FF">INT</font>(10)
+<strong><font color="#0000FF">NOT NULL DEFAULT</font> </strong>0,<br>
+<strong>right_key </strong><font color="#FF00FF">INT</font>(10) <strong><font color="#0000FF">NOT NULL DEFAULT</font></strong> 0,<br>
+<strong>level</strong> <font color="#FF00FF">INT</font>(10) NOT <strong><font color="#0000FF">NULL DEFAULT</font></strong> 0,<br>
+<strong><font color="#0000FF">PRIMARY KEY</font> id</strong>,<br>
+<strong><font color="#0000FF">INDEX</font> left_key</strong> (<strong>left_key</strong>, <strong>right_key</strong>, <strong>level</strong>) <br>
+) </p>
+<p>Теперь определим, какие данные мы можем из неё (таблицы) выбрать:</p>
+<p>1. Собственно само дерево:</p>
+<p><strong><font color="#0000FF">SELECT </font>id</strong>, <strong>name</strong>, <strong>level <font color="#0000FF">FROM</font> my_tree <font color="#0000FF">ORDER BY</font> left_key</strong></p>
+<p>В итоге, после небольшой обработки (в которой<em> level</em> играет роль множителя отступа), получим следующий список: </p>
+<p>• Узел 1<br>
+ • • Узел 2<br>
+• • • Узел 5<br>
+• • • • Узел 10<br>
+• • • • Узел 11<br>
+• • Узел 3 <br>
+• • • Узел 6<br>
+• • • Узел 7 <br>
+• • • • Узел 12<br>
+• • • • Узел 13<br>
+• • • • Узел 14<br>
+• • • Узел 8<br>
+
+• • Узел 4 <br>
+• • • Узел 9 <br>
+• • • • Узел 15<br>
+• • • • Узел 16</p>
+<p>2. Выбор подчиненных узлов (за отправной узел возьмем "Узел 7" его ключи <font color="#FF6600">$left_key</font>, <font color="#FF6600">$right_key</font> и уровень <font color="#FF6600">$level</font>) </p>
+<p><strong><font color="#0000FF">SELECT </font>id</strong>, <strong>name</strong>, <strong>level <font color="#0000FF">FROM</font> my_tree <font color="#0000FF">WHERE </font>left_key &gt;= </strong><font color="#FF6600">$left_key</font><strong> <font color="#0000FF">AND </font>right_key &lt;= </strong><font color="#FF6600">$right_key</font><strong> <font color="#0000FF">ORDER BY</font> left_key</strong></p>
+<p>В итоге получаем:</p>
+
+<table border="0" cellpadding="0" cellspacing="0" width="100%">
+  <tbody><tr>
+    <td width="30%">• • • Узел 7 <br>
+• • • • Узел 12<br>
+• • • • Узел 13<br>
+• • • • Узел 14</td>
+    <td><div align="left"><img src="article610_files/610-2.gif" alt="" height="117" width="159"></div></td>
+  </tr>
+</tbody></table>
+<p>3. Выбор родительской "ветки": </p>
+<p><strong><font color="#0000FF">SELECT </font>id</strong>, <strong>name</strong>, <strong>level <font color="#0000FF">FROM</font> my_tree <font color="#0000FF">WHERE </font>left_key &lt;= </strong><font color="#FF6600">$left_key</font><strong> <font color="#0000FF">AND </font>right_key &gt;= </strong><font color="#FF6600">$right_key</font><strong> <font color="#0000FF">ORDER BY</font> left_key</strong></p>
+<p>В итоге получаем:</p>
+<table border="0" cellpadding="0" cellspacing="0" width="100%">
+  <tbody><tr>
+    <td width="30%">• Узел 1 <br>
+      • • Узел 3 <br>
+      • • • Узел 7</td>
+    <td><div align="left"><img src="article610_files/610-3.gif" alt="" height="177" width="52"></div></td>
+  </tr>
+</tbody></table>
+<p>4. Выбор ветки в которой участвует наш узел:</p>
+<p><strong><font color="#0000FF">SELECT </font>id</strong>, <strong>name</strong>, <strong>level <font color="#0000FF">FROM</font> my_tree <font color="#0000FF">WHERE </font>right_key &gt; </strong><font color="#FF6600">$left_key</font><strong> <font color="#0000FF">AND </font>left_key &lt; </strong><font color="#FF6600">$right_key</font><strong> <font color="#0000FF">ORDER BY</font> left_key</strong></p>
+<p>В итоге получаем:</p>
+<table border="0" cellpadding="0" cellspacing="0" width="100%">
+  <tbody><tr>
+    <td width="30%">• Узел 1<br>
+• • Узел 3 <br>
+• • • Узел 7 <br>
+• • • • Узел 12<br>
+• • • • Узел 13<br>
+• • • • Узел 14</td>
+    <td><div align="left"><img src="article610_files/610-4.gif" alt="" height="242" width="158"></div></td>
+  </tr>
+</tbody></table>
+<p></p>
+<p>В общем использование в условии запроса ключи узла можно выбрать любые данные связанные с этим узлом. </p>
+<p>Единственным затруднением может возникнуть выборка родительского узла, чтобы его получить можно сделать запрос: </p>
+<p><strong><font color="#0000FF">SELECT </font>id</strong>, <strong>name</strong>, <strong>level <font color="#0000FF">FROM</font> my_tree <font color="#0000FF">WHERE </font>left_key &lt;= </strong><font color="#FF6600">$left_key</font><strong> <font color="#0000FF">AND </font>right_key &gt;= </strong><font color="#FF6600">$right_key</font><strong> <font color="#0000FF">AND </font>level = </strong><font color="#FF6600">$level </font>+ 1  <strong><font color="#0000FF">ORDER BY</font> left_key</strong></p>
+<p>Правда, такой метод может показаться довольно громоздким, поэтому, 
+для удобства, часто добавляют уще одно поле в таблицу - parent_id - в 
+котором хранится идентификатор родительского узла. </p>
+<p><strong>Управление деревом каталогов</strong><br>
+Прежде чем начинать управлять деревом, создадим проверку целостности 
+ключей, что бы линий раз не наступать на «грабли». Для этого определим 
+основные правила:</p>
+<p>
+1. Левый ключ <em>ВСЕГДА</em> меньше правого;<br>
+2. Наименьший левый ключ <em>ВСЕГДА </em>равен 1;<br>
+3. Наибольший правый ключ <em>ВСЕГДА </em>равен двойному числу узлов;<br>
+4. Разница между правым и левым ключом <em>ВСЕГДА </em>нечетное число;<br>
+5. Если уровень узла нечетное число то тогда левый ключ <em>ВСЕГДА </em>нечетное число, то же самое и для четных чисел;<br>
+6. Ключи <em>ВСЕГДА </em>уникальны, вне зависимости от того правый он или левый;</p>
+<p>Отсюда, создаем проверочные запросы : </p>
+<p>1. <strong> <font color="#0000FF">SELECT</font> id <font color="#0000FF">FROM</font> my_tree <font color="#0000FF">WHERE</font> left_key</strong> &gt;= <strong>right_key</strong></p>
+<p>Если все правильно то результата работы запроса не будет, иначе, получаем список идентификаторов неправильных строк;</p>
+
+<p> 2 (3). <strong><font color="#0000FF">SELECT</font></strong> <font color="#FF00FF">COUNT</font>(<strong>id</strong>), <font color="#FF00FF">MIN</font>(<strong>left_key</strong>), <font color="#FF00FF">MAX</font>(<strong>right_key</strong>) <strong><font color="#0000FF">FROM </font>my_tree</strong></p>
+<p>Получаем количество записей (узлов), минимальный левый ключ и максимальный правый ключ, проверяем значения. </p>
+<p> 4. <strong><font color="#0000FF">SELECT</font> id</strong>, <font color="#FF00FF">MOD</font>((<strong>right_key</strong> - <strong>left_key</strong>) / 2) <strong> <font color="#0000FF">AS</font> ostatok <font color="#0000FF">FROM</font> my_tree <font color="#0000FF">WHERE</font> ostatok</strong> = 0 </p>
+<p>Если все правильно то результата работы запроса не будет, иначе, получаем список идентификаторов неправильных строк;</p>
+<p>5.  <strong><font color="#0000FF">SELECT</font> id</strong>, <font color="#FF00FF">MOD</font>((<strong>left_key</strong> – <strong>level </strong>+ 2) / 2)  <strong><font color="#0000FF">AS</font> ostatok <font color="#0000FF">FROM</font> my_tree <font color="#0000FF">WHERE</font> ostatok </strong>= 1 </p>
+<p>Если все правильно то результата работы запроса не будет, иначе, получаем список идентификаторов неправильных строк;</p>
+<p>6.  <strong><font color="#0000FF">SELECT </font>t1.id</strong>, <font color="#FF00FF">COUNT</font>(<strong>t1.id</strong>)  <strong><font color="#0000FF">AS</font> rep</strong>, <font color="#FF00FF">MAX</font>(<strong>t3.right_key</strong>)  <strong><font color="#0000FF">AS</font> max_right <font color="#0000FF">FROM</font> my_tree <font color="#0000FF">AS</font> t1</strong>, <strong>my_tree <font color="#0000FF">AS</font> t2</strong>, <strong>my_tree <font color="#0000FF">AS</font> t3 <font color="#0000FF">WHERE</font> t1.left_key </strong>&lt;&gt; <strong>t2.left_key <font color="#0000FF">AND</font> t1.left_key </strong>&lt;&gt; <strong>t2.right_key <font color="#0000FF">AND</font> t1.right_key </strong>&lt;&gt; <strong>t2.left_key <font color="#0000FF">AND</font> t1.right_key </strong>&lt;&gt; <strong>t2.right_key <font color="#0000FF">GROUP BY</font>  t1.id <font color="#0000FF">HAVING</font> max_right </strong>&lt;&gt; <font color="#FF00FF">SQRT</font>(4 * <strong>rep </strong>+ 1) + 1 </p>
+<p>Здесь, я думаю, потребуется некоторое пояснение запроса. Выборка по сути осуществляется из одной таблицы, но в разделе <em>FROM </em>эта
+ таблица "виртуально" продублирована 3 раза: из первой мы выбираем все 
+записи по порядку и начинаем сравнивать с записями второй таблицы 
+(раздел <em>WHERE</em>) в результате мы получаем все записи 
+неповторяющихся значений. Для того, что бы определить сколько раз запись
+ не повторялась в таблице, производим группировку (раздел <em>GROUP BY</em>) и получаем число "не повторов" (<em>COUNT(t1.id)</em>).
+ По условию, если все ключи уникальны, то число не повторов будет меньше
+ на одну единицу чем общее количество записей. Для того, чтобы 
+определить количество записей в таблице, берем максимальный правый ключ 
+(MAX(t3.right_key)), так как его значение - двойное число записей, но 
+так как в условии отбора для записи с максимальным правым ключом - 
+максимальный правый ключ будет другим, вводится третья таблица, при этом
+ число "неповторов" увеличивается умножением его на количество записей. <em>SQRT(4*rep +1)</em> - решение уравнения <em>x^2 + x = rep</em>. Если все правильно то результата работы запроса не будет, иначе, получаем список идентификаторов неправильных строк;</p>
+<p><font color="#999999">Примечание: Хотя данное тестирование не дает 100% гарантии, но определит большее количество ошибок.</font></p>
+<p><strong>Создание узла</strong><br>
+Создание узла – самое простое действие над деревом. Для того, что бы его
+ осуществить нам потребуется уровень и правый ключ родительского узла 
+(узел в который добавляется новый), либо максимальный правый ключ, если у
+ нового узла не будет родительского.</p>
+<p>Пусть <font color="#FF6600">$right_ key</font> – правый ключ 
+родительского узла, или максимальный правый ключ плюс единица (если 
+родительского узла нет, то узел с максимальным правым ключом не будет 
+обновляться, соответственно, чтобы не было повторов, берем число на 
+единицу большее). <font color="#FF6600">$level</font> – уровень родительского узла, либо 0, если родительского нет.</p>
+<p>1. Обновляем ключи существующего дерева, узлы стоящие за родительским узлом:</p>
+<p><strong><font color="#0000FF">UPDATE</font> my_tree <font color="#0000FF">SET</font> left_key</strong> = <strong>left_key </strong>+ 2, <strong>right_ key </strong>= <strong>right_ key </strong>+ 2 <strong><font color="#0000FF">WHERE</font> left_key </strong>&gt; <font color="#FF6600">$right_ key</font> </p>
+<p>Но мы обновили только те узлы в которых изменяются оба ключа, при 
+этом родительскую ветку (не узел, а все родительские узлы) мы не 
+трогали, так как в них изменяется только правый ключ. Следует иметь в 
+виду, что если у нас не будет родительского узла, то есть новый узел 
+будет корневым, то данное обновление проводить нельзя.</p>
+<p>2. Обновляем родительскую ветку:</p>
+<p><strong><font color="#0000FF">UPDATE</font> my_tree <font color="#0000FF">SET</font> right_key</strong> = <strong>right_key </strong>+ 2 <strong><font color="#0000FF">WHERE</font> right_key </strong>&gt;= <font color="#FF6600">$right_key</font> <strong><font color="#0000FF">AND</font> left_key </strong>&lt; <font color="#FF6600">$right_key</font> </p>
+<p>3. Теперь добавляем новый узел : </p>
+<p><strong><font color="#0000FF">INSERT INTO</font> my_tree <font color="#0000FF">SET</font> left_key </strong>= <font color="#FF6600">$right_key</font>, <strong>right_key</strong> = <font color="#FF6600">$right_key</font> + 1, <strong>level </strong>= <font color="#FF6600">$level</font> + 1 [дополнительные параметры ] </p>
+<p>4. Проверяем.</p>
+<p>Теперь можно объединить первые два запроса в один, что бы не делать лишних действий. </p>
+<p><strong><font color="#0000FF">UPDATE</font> my_tree <font color="#0000FF">SET</font> 
+  right_key</strong> = <strong>right_key </strong>+ 2, <strong>  left_key</strong> = <strong><font color="#0000FF">IF</font></strong>(<strong>left_key </strong>&gt; <font color="#FF6600">$right_key</font>,<strong> left_key</strong> + 2, <strong>left_key</strong>) 
+<strong><font color="#0000FF">WHERE</font> right_key </strong>&gt;= <font color="#FF6600">$right_key</font> </p>
+<p><strong>Удаление узла</strong><br>
+Удаление узла не намного сложнее, но требуется учесть, что у удаляемого 
+узла могут быть подчиненные узлы. Для осуществления этого действия нам 
+потребуется левый и правый ключ удаляемого узла.</p>
+<p>Пусть <font color="#FF6600">$left_key </font>– левый ключ удаляемого узла, а <font color="#FF6600">$right_key</font> – правый**</p>
+<p><font color="#999999">** Получить эти данные не сложно одним простейшим запросом. </font></p>
+<p>1. Удаляем узел (ветку):</p>
+<p><strong><font color="#0000FF">DELETE FROM </font>my_tree <font color="#0000FF">WHERE</font> left_key </strong>&gt;= <font color="#FF6600">$left_key</font> <strong><font color="#0000FF">AND</font> right_ key </strong>&lt;= <font color="#FF6600">$right_key</font> </p>
+<p>2. Обновляем ключи оставшихся веток:</p>
+<p>Как и в случае с добавлением обновление происходит двумя командами: 
+обновление ключей родительской ветки и обновление ключей узлов, стоящих 
+за родительской веткой. Следует правда учесть, что обновление будет 
+производиться в другом порядке, так как ключи у нас уменьшаются.</p>
+<p>2.1. Обновление родительской ветки : </p>
+<p><strong><font color="#0000FF">UPDATE</font> my_tree <font color="#0000FF">SET</font> right_key </strong>= <strong>right_key</strong> – (<font color="#FF6600">$right_key</font> - <font color="#FF6600">$left_key</font> + 1)<font color="#999999">***</font> <strong><font color="#0000FF">WHERE</font> right_key</strong> &gt; <font color="#FF6600">$right_key</font> <strong><font color="#0000FF">AND</font> left_key </strong>&lt; <font color="#FF6600">$left_key</font> </p>
+<p><font color="#999999">*** Так как мы не знаем точное количество 
+подчиненных узлов, мы вычисляем длину диапазона (смещения) ключей 
+удаляемой ветки (узла). </font></p>
+<p>2.2. Обновление последующих узлов : </p>
+<p><strong><font color="#0000FF">UPDATE</font> my_tree <font color="#0000FF">SET</font> left_key </strong>= <strong>left_key </strong>– (<font color="#FF6600">$right_key</font> - <font color="#FF6600">$left_key</font> + 1), <strong>right_key</strong> = <strong>right_key </strong>– (<font color="#FF6600">$right_key</font> - <font color="#FF6600">$left_key</font> + 1) <strong><font color="#0000FF">WHERE</font> left_key</strong> &gt; <font color="#FF6600">$right_key </font></p>
+<p>3. Проверяем.</p>
+<p>Теперь можно объединить последние два запроса в один, что бы не делать лишних действий. </p>
+<p><strong><font color="#0000FF">UPDATE</font> my_tree <font color="#0000FF">SET</font> 
+left_key </strong>= <strong><font color="#0000FF">IF</font></strong>(<strong>left_key </strong>&gt; <font color="#FF6600">$left_key</font>, <strong>left_key </strong>– (<font color="#FF6600">$right_key</font> - <font color="#FF6600">$left_key</font> + 1), <strong>left_key</strong>),<strong> right_key </strong>= <strong>right_key </strong>– (<font color="#FF6600">$right_key</font> - <font color="#FF6600">$left_key</font> + 1) <font color="#0000FF"></font><strong><font color="#0000FF">
+WHERE</font> right_key</strong> &gt; <font color="#FF6600">$right_key </font></p>
+<p><strong>Перемещение узла</strong><br>
+Перемещение узла – самое сложное действие в управлении деревом. На схеме
+ показаны области, на которые можно разделить наше дерево. Из её можно 
+увидеть, что узел может перемещаться только в две разные области: 
+вышестоящих и нижестоящих узлов. Вообще, чем примечательно использование
+ Nested Set, что с помощью двух ключей ветки возможен выбор узлов любой 
+области. </p>
+<div align="center"><img src="article610_files/610-5.gif" alt="" height="281" width="380"></div>
+<p>1. Вверх по дереву (в область вышестоящих узлов), включает в себя:</p>
+<ul type="square">
+<li>Перенос ветки (узла) в подчинение нижестоящему по дереву узлу;
+</li><li>Перенос ветки (узла) вверх без изменения родительского узла (изменение порядка узлов); </li></ul>
+
+<p>2. Вниз по дереву (в область нижестоящих узлов), включает в себя.</p>
+<ul type="square">
+  <li>Перенос ветки в «корень» дерева (учитывая, что переносимая ветка будет последней по порядку); </li>
+  <li>Перенос ветки (узла) вниз без изменения родительского узла (изменение порядка узлов); </li>
+  <li>Поднятие узла (ветки) на уровень выше; </li>
+  <li>Перемещение ветки вниз по дереву:</li>
+</ul>
+<p>Для начала выберем ключи следующих узлов:</p>
+<p>1. Ключи и уровень перемещаемого узла;</p>
+<p> <strong><font color="#0000FF">SELECT </font>level, left_key, right_key <font color="#0000FF">FROM</font> my_tree <font color="#0000FF">WHERE</font> id </strong>= <font color="#FF6600">$id</font> </p>
+  <p>Получаем <font color="#FF6600">$level</font>, <font color="#FF6600">$left_key</font>, <font color="#FF6600">$right_key</font> </p>
+  <p>2. Уровень нового родительского узла (если узел перемещается в "корень" то сразу можно подставить значение 0):</p>
+  <p><strong><font color="#0000FF">SELECT </font>level <font color="#0000FF">FROM</font> my_tree <font color="#0000FF">WHERE</font> id </strong>= <font color="#FF6600">$id_up</font></p>
+  <p>Получаем <font color="#FF6600">$level_up</font></p>
+  <p>3. Правый ключ узла за который мы вставляем узел (ветку):</p>
+  <p>Данный параметр, а не ключи нового родительского узла, выбираем по 
+одной простой причине: Для обычного перемещения этого ключа нам будет 
+достаточно, а при изменении порядка узлов и переноса в "корень" дерева 
+данный параметр нам просто необходим.</p>
+  <p>Данная переменная берется в зависимости от действия:</p>
+  <ul type="square">
+    <li>При простом перемещении в другой узел;</li>
+  </ul>
+  <p> <strong><font color="#0000FF">SELECT</font></strong> (<strong>right_key</strong> – 1) <strong><font color="#0000FF">AS</font> right_key <font color="#0000FF">FROM</font> my_tree <font color="#0000FF">WHERE</font> id</strong> = <font color="#FF6600">[id нового родительского узла] </font></p>
+  <ul type="square">
+    <li>При изменении порядка, когда родительский узел не меняется – правый ключ узла за которым будет стоять перемещаемый; </li>
+  </ul>
+  <p> <strong><font color="#0000FF">SELECT</font> left_key, right_key <font color="#0000FF">FROM</font> my_tree <font color="#0000FF">WHERE</font> id </strong>= <font color="#FF6600">[id соседнего узла с который будет(!) выше (левее)]<font color="#999999">****</font></font></p>
+  <p><font color="#999999">**** Следует обратить внимание, что при 
+поднятии узла вверх по порядку, узел выбирается не соседний, а 
+следующий, за неимением оного (перемещаемый узел будет первым) берется 
+левый ключ родительского узла </font></p>
+  <ul type="square"><li>При переносе узла в корень дерева – максимальный правый ключ ветки; </li>
+  </ul>
+  <p> <strong><font color="#0000FF">SELECT</font> </strong><font color="#FF00FF">MAX</font>(<strong>right_key</strong>) <strong><font color="#0000FF">FROM</font> my_tree </strong></p>
+  <ul type="square">
+    <li>При поднятии узла на уровень выше – правый ключ старого родительского узла</li>
+  </ul>
+  <p> <strong><font color="#0000FF">SELECT </font>right_key <font color="#0000FF">FROM</font> my_tree <font color="#0000FF">WHERE</font> level </strong>= <font color="#FF6600">$level</font> </p>
+  <p>Получаем <font color="#FF6600">$right_key_near</font> и <font color="#FF6600">$left_key_near</font> (для варианта изменения порядка)</p>
+  <p>4. Определяем смещения:</p>
+  <ul type="square">
+    <li><font align="justify" color="#FF6600">$level_up</font> - <font color="#FF6600">$level </font>+ 1 = <font color="#FF6600">$skew_level</font> - смещение уровня изменяемого узла;</li>
+    <li><font align="justify" color="#FF6600">$right_key</font> - <font color="#FF6600">$left_key</font> + 1 = <font color="#FF6600">$skew_tree</font> - смещение ключей дерева;</li>
+  </ul>
+  <p>Выбираем все узлы перемещаемой ветки:</p>
+  <p><strong><font color="#0000FF">SELECT</font> id <font color="#0000FF">FROM</font> my_tree <font color="#0000FF">WHERE</font> left_key </strong>&gt;= <font color="#FF6600">$left_key</font> <strong><font color="#0000FF">AND</font> right_key </strong>&lt;= <font color="#FF6600">$right_key</font> </p>
+  <p>Получаем <font color="#FF6600">$id_edit</font> - список id номеров перемещаемой ветки. </p>
+  <p>Так же  требуется определить: в какую область перемещается узел, для этого сравниваем <font color="#FF6600">$right_key</font> и <font color="#FF6600">$right_key_near</font>, если <font color="#FF6600">$right_key_near</font> больше, то узел перемещается в облась вышестоящих узлов, иначе - нижестоящих (почему существует разделение описано ниже).</p>
+  <p>Где у нас изменяются ключи по дереву во время переноса узла показано на схеме:</p>
+<div align="center"><img src="article610_files/610-6.gif" alt="" height="169" width="404"></div>
+  <p>Как видно из схемы правые ключи меняются только у левой 
+родительской ветки, левые ключи меняются у правой родительской ветки а 
+оба ключа меняются в узлах находящихся между родительской старой и 
+родительской новой веткой, области изменений, не меняются в зависимости 
+от того, в какую (вышестоящую или нижестоящую) область перемещается 
+узел. Отличием является, то что при перемещении в вышестоящую область 
+ключи увеличиваются, а при переходе в нижестоящую - уменьшаются.</p>
+  <p>Хочу обратить внимание на то что у нас есть разница изменения 
+ключей дерева в зависимости от того, в какую область перемещается узел 
+(увеличение &lt;-&gt; уменьшение), а так же то, что правая родительская 
+ветка может быть как старой, так и новой родительской веткой, то же 
+самое и с левой родительской веткой. Поэтому порядок обновления ключей и
+ условия выбора диапазонов областей различны, в зависимости от вида 
+перемещения (вверх или вниз).</p>
+  <p>Возможно обновление ключей в три этапа: каждая ветка отдельно и 
+диапазон между ними. Но так как мы меняем только два ключа, причем 
+изменение на одно и то же число, то можно обойтись и двумя командами (<em>UPDATE</em>). </p>
+  <p>При перемещении вверх по дереву выделяем следующие области:</p>
+  <ul type="square">
+    <li>Для левого ключа:
+      <ul type="square">
+        <li>левый ключ узла меньше <font color="#FF6600">$left_key</font></li>
+      <li>левый ключ узла больше <font color="#FF6600">$right_key_near</font></li>
+      </ul></li>
+  </ul>
+<div align="center"><img src="article610_files/610-7.gif" alt="" height="200" width="402"></div>
+  <ul type="square">
+    <li>Для правого ключа:
+      <ul type="square">
+        <li>правый ключ узла меньше <font color="#FF6600">$left_key</font></li>
+        <li>правый ключ узла больше <font color="#FF6600">$right_key_near</font></li>
+      </ul>
+    </li>
+  </ul>
+<div align="center"><img src="article610_files/610-8.gif" alt="" height="202" width="404"></div>
+  <p>Хотел бы обратить внимание на то, что в условии с <font color="#FF6600">$right_key_near</font> и <font color="#FF6600">$left_key</font> дерево разделяется на разные области так как эти переменные сравниваются с разными ключами. </p>
+  <p>Определяем смещение ключей редактируемого узла <font align="justify" color="#FF6600">$right_key_near</font> - <font color="#FF6600">$left_key</font> + 1 = <font color="#FF6600">$skew_edit</font>;</p>
+  <p>Так как при в условиях не участвуют ключи кроме изменяемых, то порядок действий не имеет значения.</p>
+  <p>1. <strong><font color="#0000FF">UPDATE </font>my_tree <font color="#0000FF">SET</font> right_key </strong>= <strong>right_key </strong>+ <font color="#FF6600">$skew_tree</font> <strong><font color="#0000FF">WHERE</font> right_key </strong>&lt; <font color="#FF6600">$left_key</font> <strong><font color="#0000FF">AND</font> right_key </strong>&gt; <font color="#FF6600">$right_key_near</font></p>
+  <p>2. <strong><font color="#0000FF">UPDATE</font> my_tree <font color="#0000FF">SET</font> left_key </strong>= <strong>left_key </strong>+ <font color="#FF6600">$skew_tree</font> <strong><font color="#0000FF">WHERE</font> left_key </strong>&lt; <font color="#FF6600">$left_key</font> <strong><font color="#0000FF">AND</font> left_key </strong>&gt; <font color="#FF6600">$right_key_near</font></p>
+  <p>Теперь можно переместить ветку:</p>
+  <p><strong><font color="#0000FF">UPDATE</font> my_tree <font color="#0000FF">SET</font> left_key </strong>= <strong>left_key </strong>+ <font color="#FF6600">$skew_edit</font>, <strong>right_key </strong>=<strong> right_key</strong> + <font color="#FF6600">$skew_edit</font>, <strong>level</strong> =<strong> level</strong> + <font color="#FF6600">$skew_level</font> <strong><font color="#0000FF">WHERE</font> id <font color="#0000FF">IN</font> </strong>(<font color="#FF6600">$id_edit</font>) </p>
+  <p>После оптимизации этих запросов получаем всего один: </p>
+<p><strong><font color="#0000FF">UPDATE</font> my_table <font color="#0000FF"><br>
+  SET</font> right_key </strong>= <strong><font color="#0000FF">IF</font></strong>(<strong>left_key </strong>&gt;= <font color="#FF6600">$left_key</font>, <strong>right_key </strong>+ <font color="#FF6600">$skew_edit</font>, <strong><font color="#0000FF">IF</font></strong>(<strong>right_key</strong> &lt; <font color="#FF6600">$left_key</font>, <strong>right_key </strong>+ <font color="#FF6600">$skew_tree</font>, <strong>right_key</strong>)),
+    <strong><br>
+    level </strong>= <strong><font color="#0000FF">IF</font></strong>(<strong>left_key</strong> &gt;= <font color="#FF6600">$left_key</font>, <strong>level </strong>+ <font color="#FF6600">$skew_level</font>, <strong>level</strong>),
+    <strong><br>
+    left_key </strong>= <strong><font color="#0000FF">IF</font></strong>(<strong>left_key</strong> &gt;= <font color="#FF6600">$left_key</font>, <strong>left_key </strong>+ <font color="#FF6600">$skew_edit</font>, <strong><font color="#0000FF">IF</font></strong>(<strong>left_key </strong>&gt; <font color="#FF6600">$right_key_near</font>, <strong>left_key </strong>+ <font color="#FF6600">$skew_tree</font>, <strong>left_key</strong>))
+<strong><font color="#0000FF"><br>
+WHERE </font>right_key</strong> &gt; <font color="#FF6600">$right_key_near </font><strong><font color="#0000FF">AND </font>left_key </strong>&lt; <font color="#FF6600">$right_key</font></p>
+  <p>В данной команде особое внимание нужно уделить порядку изменения 
+полей таблицы, самым последним полем должно изменяться поле левого ключа
+ (<em>left_key</em>), так как его значение является условием для изменения других полей. </p>
+  <p>Замечу, что при использовании этой команды, выбирать узлы перемещаемой ветки не нужно.</p>
+  <p>При перемещении вниз по дереву выделяем следующие области:</p>
+  <ul type="square">
+    <li>Для левого ключа:
+        <ul type="square">
+          <li>левый ключ узла больше <font color="#FF6600">$right_key</font></li>
+          <li>левый ключ узла меньше <font color="#FF6600">$right_key_near</font></li>
+        </ul>
+    </li>
+  </ul>
+<div align="center"><img src="article610_files/610-9.gif" alt="" height="199" width="404"></div>
+  <ul type="square">
+    <li>Для правого ключа:
+        <ul type="square">
+          <li>правый ключ узла больше <font color="#FF6600">$right_key</font></li>
+          <li>правый ключ узла меньше или равно <font color="#FF6600">$right_key_near</font></li>
+        </ul>
+    </li>
+  </ul>
+<div align="center"><img src="article610_files/610-10.gif" alt="" height="200" width="404"></div>
+  <p>Опять же порядок не имеет значения, поэтому просто делаем команды 
+на обновление. Правда хочу обратить внимание на тот факт, что в условии:
+ "<em>левый ключ узла меньше <font color="#FF6600">$right_key_near</font></em>" узел в котором находится <font color="#FF6600">$right_key_near</font>
+ тоже попадает в диапазон изменения, следует иметь ввиду, что при 
+сравнении не однотипных ключей (правый &lt;-&gt; левый) текущий узел 
+попадает или не попадает в диапазон без использования равенства в 
+условии.</p>
+  <p>Определяем смещение ключей редактируемого узла <font align="justify" color="#FF6600">$right_key_near</font> - <font color="#FF6600">$left_key</font> + 1 -  <font color="#FF6600">$skew_tree</font> = <font color="#FF6600">$skew_edit</font>.</p>
+  <p>1. <strong><font color="#0000FF">UPDATE </font>my_tree <font color="#0000FF">SET</font> right_key </strong>= <strong>right_key </strong>- <font color="#FF6600">$skew_tree</font> <strong><font color="#0000FF">WHERE</font> right_key </strong>&gt; <font color="#FF6600">$right_key</font> <strong><font color="#0000FF">AND</font> right_key </strong>&lt;= <font color="#FF6600">$right_key_near</font></p>
+  <p>2. <strong><font color="#0000FF">UPDATE</font> my_tree <font color="#0000FF">SET</font> left_key </strong>= <strong>left_key </strong>- <font color="#FF6600">$skew_tree</font> <strong><font color="#0000FF">WHERE</font> left_key </strong>&lt; <font color="#FF6600">$left_key</font> <strong><font color="#0000FF">AND</font> left_key </strong>&gt; <font color="#FF6600">$right_key_near</font></p>
+  <p>Теперь можно переместить ветку:</p>
+  <p><strong><font color="#0000FF">UPDATE</font> my_tree <font color="#0000FF">SET</font> left_key </strong>= <strong>left_key </strong>+ <font color="#FF6600">$skew_edit</font>, <strong>right_key </strong>=<strong> right_key</strong> + <font color="#FF6600">$skew_edit</font>, <strong>level</strong> =<strong> level</strong> + <font color="#FF6600">$skew_level</font> <strong><font color="#0000FF">WHERE</font> id <font color="#0000FF">IN</font> </strong>(<font color="#FF6600">$id_edit</font>) </p>
+  <p>После оптимизации этих запросов получаем всего один: </p>
+  <p><strong><font color="#0000FF">UPDATE </font>my_table <font color="#0000FF"><br>
+  SET </font>left_key </strong>= <strong><font color="#0000FF">IF</font></strong>(<strong>right_key</strong> &lt;= <font color="#FF6600">$right_key</font>, <strong>left_key </strong>+ <font color="#FF6600">$skew_edit</font>, <strong><font color="#0000FF">IF</font></strong>(<strong>left_key </strong>&gt; <font color="#FF6600">$right_key</font>, <strong>left_key </strong>- <font color="#FF6600">$skew_tree</font>, <strong>left_key</strong>)),
+<strong><br>
+level </strong>= <strong><font color="#0000FF">IF</font></strong>(<strong>right_key </strong>&lt;= <font color="#FF6600">$right_key</font>, <strong>level </strong>+ <font color="#FF6600">$skew_level</font>, <strong>level</strong>),
+<strong><br>
+right_key </strong>= <strong><font color="#0000FF">IF</font></strong>(<strong>right_key </strong>&lt;= <font color="#FF6600">$right_key</font>, <strong>right_key </strong>+ <font color="#FF6600">$skew_edit</font>, <strong><font color="#0000FF">IF</font></strong>(<strong>right_key </strong>&lt;= <font color="#FF6600">$right_key_near</font>, <strong>right_key </strong>- <font color="#FF6600">$skew_tree</font>, <strong>right_key</strong>))
+<strong><font color="#0000FF"><br>
+WHERE </font>right_key </strong>&gt; <font color="#FF6600">$left_key </font><strong><font color="#0000FF">AND </font>left_key </strong>&lt;= <font color="#FF6600">$right_key_near</font></p>
+  <p>Замечания те же, что и при перемещении ветки вверх по дереву.</p>
+  <p>На этом в общем-то все, в итоге получаем только четыре основных 
+действия, основную сложность составляет подготовка переменных к 
+перемещению узла.</p>
+<div align="right"><i>Спасибо Максу (Maxim Matyukhin) за помощь в написании данной статьи</i></div><p></p></td>
+</tr><tr>
+<td><img src="article610_files/spacer.gif" height="8" width="1"></td>
+</tr>
+</tbody></table>
+<br>
+<!-- Конец блока текста статьи -->
+
+<table align="center" border="0" cellpadding="3" cellspacing="2" width="97%">
+<tbody><tr>
+<td align="left"><font class="kroshkatext">» http://www.getinfo.ru/article610.html</font></td>
+<td align="right"><font class="kroshkatext">» 12.08.2004</font></td>
+</tr>
+</tbody></table>
+<table align="center" bgcolor="#E8A11A" border="0" cellpadding="0" cellspacing="0" width="100%">
+<tbody><tr><td><img src="article610_files/spacer.gif" alt="" height="8" width="1"></td></tr>
+<tr><td align="center"><script language="JavaScript">
+<!--
+  var NS = (navigator.appName == "Netscape");
+  var VERSION = parseInt(navigator.appVersion);
+  function MyPrint()
+  {
+   if(NS){ 
+          window.print(); 
+         }else{
+               var WebBrowser = '<OBJECT ID="WebBrowser1" WIDTH=0 HEIGHT=0 CLASSID="CLSID:8856F961-340A-11D0-A96B-00C04FD705A2"></OBJECT>';
+               document.body.insertAdjacentHTML('beforeEnd', WebBrowser);
+               WebBrowser1.ExecWB(6, 2); // Use a 1 vs. a 2 for a prompting dialog box  
+               WebBrowser1.outerHTML = "";
+              }
+  }
+  if(VERSION > 3){ document.write('<form><input type="button" value="Распечатать" title="Распечатать статью" name="Print" class="addsubmit" onClick="MyPrint();"></form>'); }
+//-->
+</script><form><input value="Распечатать" title="Распечатать статью" name="Print" class="addsubmit" onclick="MyPrint();" type="button"></form></td></tr>
+<tr><td><img src="article610_files/spacer.gif" alt="" height="8" width="1"></td></tr>
+<tr><td style="font-family: Tahoma, Verdana, Helvetica; font-size: 10px; color: #999999;" align="right" bgcolor="#FFFFFF">©&nbsp;2003—2005. GETINFO.RU. ВСЕ ПРАВА ЗАЩИЩЕНЫ.&nbsp;</td></tr>
+</tbody></table>
+
+
+
+
+
+
+
+
+</body></html>

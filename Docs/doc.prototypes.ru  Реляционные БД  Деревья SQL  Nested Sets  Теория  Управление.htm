@@ -1,0 +1,475 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html><head>
+    <title>doc.prototypes.ru: Реляционные БД: Деревья SQL: Nested Sets: Теория: Управление</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta http-equiv="Keywords" content="управление nested sets,древовидные структуры данных,создание перемещение и удаление узлов">
+    <meta http-equiv="Description" content="В данной статье описываются способы изменения древовидных структур Nested Sets: создание, перемещение и удаление узлов и ветвей">
+    <link rel="stylesheet" href="doc.prototypes.ru%20%20%D0%A0%D0%B5%D0%BB%D1%8F%D1%86%D0%B8%D0%BE%D0%BD%D0%BD%D1%8B%D0%B5%20%D0%91%D0%94%20%20%D0%94%D0%B5%D1%80%D0%B5%D0%B2%D1%8C%D1%8F%20SQL%20%20Nested%20Sets%20%20%D0%A2%D0%B5%D0%BE%D1%80%D0%B8%D1%8F%20%20%D0%A3%D0%BF%D1%80%D0%B0%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5_files/default.css" type="text/css">
+</head>
+<body>
+<div class="border_bottom">
+<h1 style="font-family: monospace, courier; margin: 0; text-align: center;">DOC.PROTOTYPES.RU</h1>
+</div>
+<div style="position:absolute;top:10px;right:10px">
+<a href="http://add.rambler.ru/" target="_blank"><img src="doc.prototypes.ru%20%20%D0%A0%D0%B5%D0%BB%D1%8F%D1%86%D0%B8%D0%BE%D0%BD%D0%BD%D1%8B%D0%B5%20%D0%91%D0%94%20%20%D0%94%D0%B5%D1%80%D0%B5%D0%B2%D1%8C%D1%8F%20SQL%20%20Nested%20Sets%20%20%D0%A2%D0%B5%D0%BE%D1%80%D0%B8%D1%8F%20%20%D0%A3%D0%BF%D1%80%D0%B0%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5_files/button.gif" alt="В закладки" height="16" width="94"></a>
+</div>
+
+
+<div class="border_bottom" style="padding-left: 10px; padding-top: 5px; padding-bottom: 5px;"><a href="http://doc.prototypes.ru/">Главная</a> &gt;
+<a href="http://doc.prototypes.ru/database/">Базы данных</a> &gt;
+<a href="http://doc.prototypes.ru/database/trees/">Деревья SQL</a> &gt;
+<a href="http://doc.prototypes.ru/database/trees/nestedsets/">Nested Sets</a> &gt;
+<a href="http://doc.prototypes.ru/database/trees/nestedsets/theory/">Теория</a> &gt;</div>
+
+<div style="padding-left: 10px; padding-right: 10px;">
+
+<h3>Управление деревьями Nested Sets</h3>
+
+<h4>Создание узла:</h4>
+
+<p>Создание узла – самое простое действие над деревом. Для того, что бы 
+его осуществить нам потребуется уровень и правый ключ родительского узла
+ (узел в который добавляется новый), либо максимальный правый ключ, если
+ у нового узла не будет родительского.</p>
+<p>Пусть [right_key] – правый ключ родительского узла, или максимальный 
+правый ключ плюс единица (если родительского узла нет, то узел с 
+максимальным правым ключом не будет обновляться, соответственно, чтобы 
+не было повторов, берем число на единицу большее). [level] – уровень 
+родительского узла, либо 0, если родительского нет.</p>
+<p>Обновляем ключи существующего дерева, узлы стоящие за родительским узлом (1):</p>
+
+<fieldset class="code sql"><legend>SQL код (1)</legend><pre><span class="directive">UPDATE</span> <span class="names">my_tree</span>
+    <span class="directive">SET</span>
+        left_key = left_key + 2,
+        right_key = right_key + 2
+    <span class="directive">WHERE</span>
+        left_key &gt; <i>[right_key]</i>;
+</pre></fieldset>
+
+<p>Но мы обновили только те узлы в которых изменяются оба ключа, при 
+этом родительскую ветку (не узел, а все родительские узлы) мы не 
+трогали, так как в них изменяется только правый ключ. Следует иметь в 
+виду, что если у нас не будет родительского узла, то есть новый узел 
+будет корневым, то данное обновление проводить нельзя.</p>
+<p>Обновляем родительскую ветку (2):</p>
+
+<fieldset class="code sql"><legend>SQL код (2)</legend><pre><span class="directive">UPDATE</span> <span class="names">my_tree</span>
+    <span class="directive">SET</span> right_key = right_key + 2
+    <span class="directive">WHERE</span>
+        right_key &gt;= <i>[right_key]</i> <span class="directive">AND</span>
+        left_key &lt; <i>[right_key]</i>;
+</pre></fieldset>
+
+<p>Теперь добавляем новый узел (3):</p>
+
+<fieldset class="code sql"><legend>SQL код (3)</legend><pre><span class="directive">INSERT INTO</span> <span class="names">my_tree</span>
+    <span class="directive">SET</span>
+        left_key = <i>[right_key]</i>,
+        right_key = <i>[right_key]</i> + 1,
+        level = <i>[level]</i> + 1
+        ...;
+</pre></fieldset>
+
+<p>Теперь можно объединить первые два запроса в один (4), что бы не делать лишних действий. </p>
+
+<fieldset class="code sql"><legend>SQL код (4)</legend><pre><span class="directive">UPDATE</span> <span class="names">my_tree</span>
+    <span class="directive">SET</span>
+        right_key = right_key + 2,
+        left_key = <span class="directive">CASE WHEN</span> left_key &gt; <i>[right_key]</i>
+                        <span class="directive">THEN</span> left_key + 2
+                        <span class="directive">ELSE</span> left_key
+                   <span class="directive">END</span>
+    <span class="directive">WHERE</span>
+        right_key &gt;= <i>[right_key]</i>;
+</pre></fieldset>
+
+<h4>Удаление узла</h4>
+<p>Удаление узла не намного сложнее, но требуется учесть, что у 
+удаляемого узла могут быть подчиненные узлы. Для осуществления этого 
+действия нам потребуется левый и правый ключ удаляемого узла.</p>
+<p>Пусть <i>[left_key]</i> – левый ключ удаляемого узла, а <i>[right_key]</i> – правый</p>
+<p>Удаляем узел (ветку) (5):</p>
+
+<fieldset class="code sql"><legend>SQL код (5)</legend><pre><span class="directive">DELETE FROM</span> <span class="names">my_tree</span>
+    <span class="directive">WHERE</span>
+        left_key &gt;= <i>[left_key]</i> <span class="directive">AND</span>
+        right_key &lt;= <i>[right_key]</i>;
+</pre></fieldset>
+
+<p>Обновляем ключи оставшихся веток:</p>
+<p>Как и в случае с добавлением обновление происходит двумя командами: 
+обновление ключей родительской ветки и обновление ключей узлов, стоящих 
+за родительской веткой. Следует правда учесть, что обновление будет 
+производиться в другом порядке, так как ключи у нас уменьшаются.</p>
+<p>Обновление родительской ветки (6):</p>
+
+<fieldset class="code sql"><legend>SQL код (6)</legend><pre><span class="directive">UPDATE</span> <span class="names">my_tree</span>
+    <span class="directive">SET</span>
+        right_key = right_key – ( <i>[right_key]</i> - <i>[left_key]</i> + 1 ) <span class="comment">--- *</span>
+    <span class="directive">WHERE</span>
+        right_key &gt; <i>[right_key]</i> <span class="directive">AND</span>
+        left_key &lt; <i>[left_key]</i>;
+</pre></fieldset>
+
+<p>* Так как мы не знаем точное количество подчиненных узлов, мы 
+вычисляем длину диапазона (смещения) ключей удаляемой ветки (узла).</p>
+<p>Обновление последующих узлов (7):</p>
+
+<fieldset class="code sql"><legend>SQL код (7)</legend><pre><span class="directive">UPDATE</span> <span class="names">my_tree</span>
+    <span class="directive">SET</span>
+        left_key = left_key – ( <i>[right_key]</i> - <i>[left_key]</i> + 1 ),
+        right_key = right_key – ( <i>[right_key]</i> - <i>[left_key]</i> + 1 )
+    <span class="directive">WHERE</span>
+        left_key &gt; <i>[right_key]</i>;
+</pre></fieldset>
+
+<p>Теперь можно объединить последние два запроса в один, что бы не делать лишних действий (8).</p>
+
+<fieldset class="code sql"><legend>SQL код (8)</legend><pre><span class="directive">UPDATE</span> <span class="names">my_tree</span>
+    <span class="directive">SET</span>
+        left_key = <span class="directive">CASE WHEN</span> left_key &gt; <i>[left_key]</i>
+                        <span class="directive">THEN</span> left_key – ( <i>[right_key]</i> - <i>[left_key]</i> + 1 )
+                        <span class="directive">ELSE</span> left_key
+                   <span class="directive">END</span>,
+        right_key = right_key – ( <i>[right_key]</i> - <i>[left_key]</i> + 1 )
+    <span class="directive">WHERE</span>
+        right_key &gt; <i>[right_key]</i>;
+</pre></fieldset>
+
+<h4>Перемещение узла</h4>
+
+<p>Перемещение узла – самое сложное действие в управлении деревом. На 
+схеме показаны области, на которые можно разделить наше дерево. Из её 
+можно увидеть, что узел может перемещаться только в две разные области: 
+вышестоящих и нижестоящих узлов. Вообще, чем примечательно использование
+ Nested Sets, что с помощью двух ключей ветки возможен выбор узлов любой
+ области. </p>
+
+<div class="center"><img src="doc.prototypes.ru%20%20%D0%A0%D0%B5%D0%BB%D1%8F%D1%86%D0%B8%D0%BE%D0%BD%D0%BD%D1%8B%D0%B5%20%D0%91%D0%94%20%20%D0%94%D0%B5%D1%80%D0%B5%D0%B2%D1%8C%D1%8F%20SQL%20%20Nested%20Sets%20%20%D0%A2%D0%B5%D0%BE%D1%80%D0%B8%D1%8F%20%20%D0%A3%D0%BF%D1%80%D0%B0%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5_files/schema01.gif" alt="Схема зон дерева" height="280" width="380"></div>
+
+<p>1. Вверх по дереву (в область вышестоящих узлов), включает в себя:</p>
+
+<ul>
+    <li>Перенос ветки (узла) в подчинение нижестоящему по дереву узлу;</li>
+    <li>Перенос ветки (узла) вверх без изменения родительского узла (изменение порядка узлов);</li>
+</ul>
+
+<p>2. Вниз по дереву (в область нижестоящих узлов), включает в себя.</p>
+
+<ul>
+    <li>Перенос ветки в «корень» дерева (учитывая, что переносимая ветка будет последней по порядку);</li>
+    <li>Перенос ветки (узла) вниз без изменения родительского узла (изменение порядка узлов);</li>
+    <li>Поднятие узла (ветки) на уровень выше; </li>
+    <li>Перемещение ветки вниз по дереву:</li>
+</ul>
+
+<p>Для начала выберем ключи следующих узлов:</p>
+<p>1. Ключи и уровень перемещаемого узла;</p>
+
+<fieldset class="code sql"><legend>SQL код (9)</legend><pre><span class="directive">SELECT</span> level, left_key, right_key 
+    <span class="directive">FROM</span> <span class="names">my_tree</span> 
+    <span class="directive">WHERE</span> id = <i>[id]</i>;
+</pre></fieldset>
+
+<p>Получаем <i>[level]</i>, <i>[left_key]</i>, <i>[right_key]</i> </p>
+<p>2. Уровень нового родительского узла (если узел перемещается в "корень" то сразу можно подставить значение 0):</p>
+
+<fieldset class="code sql"><legend>SQL код (10)</legend><pre><span class="directive">SELECT</span> level 
+    <span class="directive">FROM</span> <span class="names">my_tree</span> 
+    <span class="directive">WHERE</span> id = <i>[id_up]</i>;
+</pre></fieldset>
+
+<p>Получаем <i>[level_up]</i></p>
+<p>3. Правый ключ узла за который мы вставляем узел (ветку):</p>
+<p>Данный параметр, а не ключи нового родительского узла, выбираем по 
+одной простой причине: Для обычного перемещения этого ключа нам будет 
+достаточно, а при изменении порядка узлов и переноса в "корень" дерева 
+данный параметр нам просто необходим.</p>
+<p>Данная переменная берется в зависимости от действия:</p>
+
+<ul>
+    <li>При простом перемещении в другой узел;</li>
+</ul>
+
+<fieldset class="code sql"><legend>SQL код (11)</legend><pre><span class="directive">SELECT</span> (right_key – 1) <span class="directive">AS</span> <span class="alias">right_key</span>
+    <span class="directive">FROM</span> <span class="names">my_tree</span>
+    <span class="directive">WHERE</span> id = <i>[id нового родительского узла]</i>;
+</pre></fieldset>
+
+<ul>
+    <li>При изменении порядка, когда родительский узел не меняется – правый ключ узла за которым будет стоять перемещаемый; </li>
+</ul>
+
+<fieldset class="code sql"><legend>SQL код (12)</legend><pre><span class="directive">SELECT</span> left_key, right_key 
+    <span class="directive">FROM</span> <span class="names">my_tree</span> 
+    <span class="directive">WHERE</span> id = <i>[id соседнего узла с который будет(!) выше (левее)]</i>; <span class="comment">--****</span>
+</pre></fieldset>
+
+<p>**** Следует обратить внимание, что при поднятии узла вверх по 
+порядку, узел выбирается не соседний, а следующий, за неимением оного 
+(перемещаемый узел будет первым) берется левый ключ родительского узла </p>
+
+<ul>
+    <li>При переносе узла в корень дерева – максимальный правый ключ ветки; </li>
+</ul>
+
+<fieldset class="code sql"><legend>SQL код (13)</legend><pre><span class="directive">SELECT</span> <span class="method">MAX</span>(right_key)
+    <span class="directive">FROM</span> <span class="names">my_tree</span>;
+</pre></fieldset>
+
+<ul>
+    <li>При поднятии узла на уровень выше – правый ключ старого родительского узла</li>
+</ul>
+
+<fieldset class="code sql"><legend>SQL код (14)</legend><pre><span class="directive">SELECT</span> right_key 
+    <span class="directive">FROM</span> <span class="names">my_tree</span> 
+    <span class="directive">WHERE</span> level = <i>[level]</i>;
+</pre></fieldset>
+
+<p>Получаем <i>[right_key_near]</i> и <i>[left_key_near]</i> (для варианта изменения порядка)</p>
+<p>4. Определяем смещения:</p>
+
+<ul>
+    <li><i>[skew_level]</i> = <i>[level_up]</i> - <i>[level]</i> + 1 - смещение уровня изменяемого узла;</li>
+    <li><i>[skew_tree]</i> = <i>[right_key]</i> - <i>[left_key]</i> + 1 - смещение ключей дерева;</li>
+</ul>
+
+<p>Выбираем все узлы перемещаемой ветки:</p>
+
+<fieldset class="code sql"><legend>SQL код (15)</legend><pre><span class="directive">SELECT</span> id 
+    <span class="directive">FROM</span> <span class="names">my_tree</span> 
+    <span class="directive">WHERE</span>
+        left_key &gt;= <i>[left_key]</i> <span class="directive">AND</span>
+        right_key &lt;= <i>[right_key]</i>;
+</pre></fieldset>
+
+<p>Получаем <i>[id_edit]</i> - список id номеров перемещаемой ветки. </p>
+<p>Так же  требуется определить: в какую область перемещается узел, для этого сравниваем <i>[right_key]</i> и <i>[right_key_near]</i>, если <i>[right_key_near]</i> больше, то узел перемещается в облась вышестоящих узлов, иначе - нижестоящих (почему существует разделение описано ниже).</p>
+<p>Где у нас изменяются ключи по дереву во время переноса узла показано на схеме:</p>
+
+<div class="center"><img src="doc.prototypes.ru%20%20%D0%A0%D0%B5%D0%BB%D1%8F%D1%86%D0%B8%D0%BE%D0%BD%D0%BD%D1%8B%D0%B5%20%D0%91%D0%94%20%20%D0%94%D0%B5%D1%80%D0%B5%D0%B2%D1%8C%D1%8F%20SQL%20%20Nested%20Sets%20%20%D0%A2%D0%B5%D0%BE%D1%80%D0%B8%D1%8F%20%20%D0%A3%D0%BF%D1%80%D0%B0%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5_files/schema02.gif" alt="Схема изменений ключей при перемещении узлов" height="169" width="404"></div>
+
+<p>Как видно из схемы правые ключи меняются только у левой родительской 
+ветки, левые ключи меняются у правой родительской ветки а оба ключа 
+меняются в узлах находящихся между родительской старой и родительской 
+новой веткой, области изменений, не меняются в зависимости от того, в 
+какую (вышестоящую или нижестоящую) область перемещается узел. Отличием 
+является, то что при перемещении в вышестоящую область ключи 
+увеличиваются, а при переходе в нижестоящую - уменьшаются.</p>
+<p>Хочу обратить внимание на то что у нас есть разница изменения ключей 
+дерева в зависимости от того, в какую область перемещается узел 
+(увеличение &lt;-&gt; уменьшение), а так же то, что правая родительская 
+ветка может быть как старой, так и новой родительской веткой, то же 
+самое и с левой родительской веткой. Поэтому порядок обновления ключей и
+ условия выбора диапазонов областей различны, в зависимости от вида 
+перемещения (вверх или вниз).</p>
+<p>Возможно обновление ключей в три этапа: каждая ветка отдельно и 
+диапазон между ними. Но так как мы меняем только два ключа, причем 
+изменение на одно и то же число, то можно обойтись и двумя командами (<i>UPDATE</i>). </p>
+<p>При перемещении вверх по дереву выделяем следующие области:</p>
+<ul>
+    <li>Для левого ключа:</li>
+    <li class="nopic"><ul>
+        <li>левый ключ узла меньше <i>[left_key]</i></li>
+        <li>левый ключ узла больше <i>[right_key_near]</i></li>
+    </ul></li>
+</ul>
+
+<div class="center"><img src="doc.prototypes.ru%20%20%D0%A0%D0%B5%D0%BB%D1%8F%D1%86%D0%B8%D0%BE%D0%BD%D0%BD%D1%8B%D0%B5%20%D0%91%D0%94%20%20%D0%94%D0%B5%D1%80%D0%B5%D0%B2%D1%8C%D1%8F%20SQL%20%20Nested%20Sets%20%20%D0%A2%D0%B5%D0%BE%D1%80%D0%B8%D1%8F%20%20%D0%A3%D0%BF%D1%80%D0%B0%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5_files/schema03.gif" alt="Зона изменений левых ключей при перемещении узла вверх" height="200" width="402"></div>
+
+<ul>
+    <li>Для правого ключа:</li>
+    <li class="nopic"><ul>
+        <li>правый ключ узла меньше <i>[left_key]</i></li>
+        <li>правый ключ узла больше <i>[right_key_near]</i></li>
+    </ul></li>
+</ul>
+
+<div class="center"><img src="doc.prototypes.ru%20%20%D0%A0%D0%B5%D0%BB%D1%8F%D1%86%D0%B8%D0%BE%D0%BD%D0%BD%D1%8B%D0%B5%20%D0%91%D0%94%20%20%D0%94%D0%B5%D1%80%D0%B5%D0%B2%D1%8C%D1%8F%20SQL%20%20Nested%20Sets%20%20%D0%A2%D0%B5%D0%BE%D1%80%D0%B8%D1%8F%20%20%D0%A3%D0%BF%D1%80%D0%B0%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5_files/schema04.gif" alt="Зона изменений правых ключей при перемещении узла вверх" height="202" width="404"></div>
+
+<p>Хотел бы обратить внимание на то, что в условии с <i>[right_key_near]</i> и <i>[left_key]</i> дерево разделяется на разные области так как эти переменные сравниваются с разными ключами. </p>
+<p>Определяем смещение ключей редактируемого узла <i>[skew_edit]</i> = <i>[right_key_near]</i> - <i>[left_key]</i> + 1.</p>
+<p>Так как при в условиях не участвуют ключи кроме изменяемых, то порядок действий не имеет значения.</p>
+
+<fieldset class="code sql"><legend>SQL код (16)</legend><pre><span class="directive">UPDATE</span> <span class="names">my_tree</span>
+    <span class="directive">SET</span> right_key = right_key + <i>[skew_tree]</i>
+    <span class="directive">WHERE</span>
+        right_key &lt; <i>[left_key]</i> <span class="directive">AND</span>
+        right_key &gt; <i>[right_key_near]</i>;
+   
+<span class="directive">UPDATE</span> <span class="names">my_tree</span>
+    <span class="directive">SET</span> left_key = left_key + <i>[skew_tree]</i>
+    <span class="directive">WHERE</span>
+        left_key &lt; <i>[left_key]</i> <span class="directive">AND</span>
+        left_key &gt; <i>[right_key_near]</i>;
+</pre></fieldset>
+
+<p>Теперь можно переместить ветку:</p>
+
+<fieldset class="code sql"><legend>SQL код (17)</legend><pre><span class="directive">UPDATE</span> <span class="names">my_tree</span>
+    <span class="directive">SET</span>
+        left_key = left_key + <i>[skew_edit]</i>,
+        right_key = right_key + <i>[skew_edit]</i>,
+        level = level + <i>[skew_level]</i>
+    <span class="directive">WHERE</span>
+        id <span class="directive">IN</span> (<i>[id_edit]</i>);
+</pre></fieldset>
+
+<p>После оптимизации этих запросов получаем всего один: </p>
+
+<fieldset class="code sql"><legend>SQL код (18)</legend><pre><span class="directive">UPDATE</span> <span class="names">my_table</span>
+    <span class="directive">SET</span>
+        right_key = <span class="directive">CASE WHEN</span> left_key &gt;= <i>[left_key]</i>
+                         <span class="directive">THEN</span> right_key + <i>[skew_edit]</i>
+                         <span class="directive">ELSE CASE WHEN</span> right_key &lt; <i>[left_key]</i>
+                                   <span class="directive">THEN</span> right_key + <i>[skew_tree]</i>
+                                   <span class="directive">ELSE</span> right_key
+                              <span class="directive">END</span>
+                    <span class="directive">END</span>,
+        level = <span class="directive">CASE WHEN</span> left_key &gt;= <i>[left_key]</i>
+                     <span class="directive">THEN</span> level + <i>[skew_level]</i>
+                     <span class="directive">ELSE</span> level
+                <span class="directive">END</span>,
+        left_key = <span class="directive">CASE WHEN</span> left_key &gt;= <i>[left_key]</i>
+                        <span class="directive">THEN</span> left_key + <i>[skew_edit]</i>
+                        <span class="directive">ELSE CASE WHEN</span> left_key &gt; <i>[right_key_near]</i>
+                                  <span class="directive">THEN</span> left_key + <i>[skew_tree]</i>
+                                  <span class="directive">ELSE</span> left_key
+                             <span class="directive">END</span>
+                   <span class="directive">END</span>
+    <span class="directive">WHERE</span>
+        right_key &gt; <i>[right_key_near]</i> <span class="directive">AND</span>
+        left_key &lt; <i>[right_key]</i>;
+</pre></fieldset>
+
+<p>В данной команде особое внимание нужно уделить порядку изменения 
+полей таблицы, самым последним полем должно изменяться поле левого ключа
+ (<i>left_key</i>), так как его значение является условием для изменения других полей. </p>
+<p>Замечу, что при использовании этой команды, выбирать узлы перемещаемой ветки не нужно.</p>
+<p>При перемещении вниз по дереву выделяем следующие области:</p>
+<ul>
+    <li>Для левого ключа:</li>
+    <li class="nopic"><ul>
+        <li>левый ключ узла больше [right_key]</li>
+        <li>левый ключ узла меньше [right_key_near]</li>
+    </ul></li>
+</ul>
+
+<div class="center"><img src="doc.prototypes.ru%20%20%D0%A0%D0%B5%D0%BB%D1%8F%D1%86%D0%B8%D0%BE%D0%BD%D0%BD%D1%8B%D0%B5%20%D0%91%D0%94%20%20%D0%94%D0%B5%D1%80%D0%B5%D0%B2%D1%8C%D1%8F%20SQL%20%20Nested%20Sets%20%20%D0%A2%D0%B5%D0%BE%D1%80%D0%B8%D1%8F%20%20%D0%A3%D0%BF%D1%80%D0%B0%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5_files/schema05.gif" alt="Зона изменений левых ключей при перемещении узла вниз" height="199" width="404"></div>
+
+<ul>
+    <li>Для правого ключа:</li>
+    <li class="nopic"><ul>
+        <li>правый ключ узла больше [right_key]</li>
+        <li>правый ключ узла меньше или равно [right_key_near]</li>
+    </ul></li>
+</ul>
+  
+<div class="center"><img src="doc.prototypes.ru%20%20%D0%A0%D0%B5%D0%BB%D1%8F%D1%86%D0%B8%D0%BE%D0%BD%D0%BD%D1%8B%D0%B5%20%D0%91%D0%94%20%20%D0%94%D0%B5%D1%80%D0%B5%D0%B2%D1%8C%D1%8F%20SQL%20%20Nested%20Sets%20%20%D0%A2%D0%B5%D0%BE%D1%80%D0%B8%D1%8F%20%20%D0%A3%D0%BF%D1%80%D0%B0%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5_files/schema06.gif" alt="Зона изменений правых ключей при перемещении узла вниз" height="200" width="404"></div>
+
+<p>Опять же порядок не имеет значения, поэтому просто делаем команды на 
+обновление. Правда хочу обратить внимание на тот факт, что в условии: "<i>левый ключ узла меньше [right_key_near]</i>"
+ узел в котором находится [right_key_near] тоже попадает в диапазон 
+изменения, следует иметь ввиду, что при сравнении не однотипных ключей 
+(правый &lt;-&gt; левый) текущий узел попадает или не попадает в 
+диапазон без использования равенства в условии.</p>
+<p>Определяем смещение ключей редактируемого узла [skew_edit] = [right_key_near] - [left_key] + 1 - [skew_tree].</p>
+
+<fieldset class="code sql"><legend>SQL код (19)</legend><pre><span class="directive">UPDATE</span> <span class="names">my_tree</span>
+    <span class="directive">SET</span>
+        right_key = right_key - <i>[skew_tree]</i>
+    <span class="directive">WHERE</span>
+        right_key &gt; <i>[right_key]</i> <span class="directive">AND</span>
+        right_key &lt;= <i>[right_key_near]</i>;
+    
+<span class="directive">UPDATE</span> <span class="names">my_tree</span>
+    <span class="directive">SET</span>
+        left_key = left_key - <i>[skew_tree]</i>
+    <span class="directive">WHERE</span>
+        left_key &lt; <i>[left_key]</i> <span class="directive">AND</span>
+        left_key &gt; <i>[right_key_near]</i>;
+</pre></fieldset>
+
+<p>Теперь можно переместить ветку:</p>
+
+<fieldset class="code sql"><legend>SQL код (20)</legend><pre><span class="directive">UPDATE</span> <span class="names">my_tree</span>
+    <span class="directive">SET</span>
+        left_key = left_key + <i>[skew_edit]</i>,
+        right_key = right_key + <i>[skew_edit]</i>,
+        level = level + <i>[skew_level]</i>
+    <span class="directive">WHERE</span>
+        id <span class="directive">IN</span> (<i>[id_edit]</i>);
+</pre></fieldset>
+
+<p>После оптимизации этих запросов получаем всего один: </p>
+
+<fieldset class="code sql"><legend>SQL код (21)</legend><pre><span class="directive">UPDATE</span> <span class="names">my_table</span>
+    <span class="directive">SET</span>
+        left_key = <span class="directive">CASE WHEN</span> right_key &lt;= <i>[right_key]</i>
+                        <span class="directive">THEN</span> left_key + <i>[skew_edit]</i>
+                        <span class="directive">ELSE CASE WHEN</span> left_key &gt; <i>[right_key]</i>
+                                  <span class="directive">THEN</span> left_key - <i>[skew_tree]</i>
+                                  <span class="directive">ELSE</span> left_key
+                             <span class="directive">END</span>
+                    <span class="directive">END</span>,
+        level = <span class="directive">CASE WHEN</span> right_key &lt;= <i>[right_key]</i>,
+                     <span class="directive">THEN</span> level + <i>[skew_level]</i>
+                     <span class="directive">ELSE</span> level
+                <span class="directive">END</span>,
+        right_key = <span class="directive">CASE WHEN</span> right_key &lt;= <i>[right_key]</i>
+                         <span class="directive">THEN</span> right_key + <i>[skew_edit]</i>
+                         <span class="directive">ELSE CASE WHEN</span> right_key &lt;= <i>[right_key_near]</i>
+                                   <span class="directive">THEN</span> right_key - <i>[skew_tree]</i>
+                                   <span class="directive">ELSE</span> right_key
+                              <span class="directive">END</span>
+                    <span class="directive">END</span>
+    <span class="directive">WHERE</span>
+        right_key &gt; <i>[left_key]</i> <span class="directive">AND</span>
+        left_key &lt;= <i>[right_key_near]</i>;
+</pre></fieldset>
+
+<p>Замечания те же, что и при перемещении ветки вверх по дереву.</p>
+<p>На этом в общем-то все, в итоге получаем только четыре основных 
+действия, основную сложность составляет подготовка переменных к 
+перемещению узла.</p>
+
+<div class="author"><a href="http://phoinix-rw.moikrug.ru/" target="_blank">Сергей Томулевич aka Phoinix</a> (01.06.2005, ред. 12.01.2010 г.)</div>
+
+</div>
+
+<!-- Google.Analytics -->
+<script type="text/javascript">
+var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+</script><script src="doc.prototypes.ru%20%20%D0%A0%D0%B5%D0%BB%D1%8F%D1%86%D0%B8%D0%BE%D0%BD%D0%BD%D1%8B%D0%B5%20%D0%91%D0%94%20%20%D0%94%D0%B5%D1%80%D0%B5%D0%B2%D1%8C%D1%8F%20SQL%20%20Nested%20Sets%20%20%D0%A2%D0%B5%D0%BE%D1%80%D0%B8%D1%8F%20%20%D0%A3%D0%BF%D1%80%D0%B0%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5_files/ga.js" type="text/javascript"></script>
+<script type="text/javascript">
+try {
+var pageTracker = _gat._getTracker("UA-10023967-2");
+pageTracker._trackPageview();
+} catch(err) {}</script>
+<!-- Google.Analytics -->
+<!-- Yandex.Metrika -->
+<script src="doc.prototypes.ru%20%20%D0%A0%D0%B5%D0%BB%D1%8F%D1%86%D0%B8%D0%BE%D0%BD%D0%BD%D1%8B%D0%B5%20%D0%91%D0%94%20%20%D0%94%D0%B5%D1%80%D0%B5%D0%B2%D1%8C%D1%8F%20SQL%20%20Nested%20Sets%20%20%D0%A2%D0%B5%D0%BE%D1%80%D0%B8%D1%8F%20%20%D0%A3%D0%BF%D1%80%D0%B0%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5_files/watch.js" type="text/javascript"></script>
+<script type="text/javascript">
+try { var yaCounter205445 = new Ya.Metrika(205445); } catch(e){}
+</script>
+<noscript><div style="position: absolute;"><img src="//mc.yandex.ru/watch/205445" alt=""></div></noscript>
+<!-- Yandex.Metrika -->
+<!-- begin of Top100 code -->
+<script type="text/javascript" src="doc.prototypes.ru%20%20%D0%A0%D0%B5%D0%BB%D1%8F%D1%86%D0%B8%D0%BE%D0%BD%D0%BD%D1%8B%D0%B5%20%D0%91%D0%94%20%20%D0%94%D0%B5%D1%80%D0%B5%D0%B2%D1%8C%D1%8F%20SQL%20%20Nested%20Sets%20%20%D0%A2%D0%B5%D0%BE%D1%80%D0%B8%D1%8F%20%20%D0%A3%D0%BF%D1%80%D0%B0%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5_files/top100.js"></script><noscript><div><img src="http://counter.rambler.ru/top100.cnt?1847819" alt="" width="1" height="1"></div></noscript>
+<!-- end of Top100 code -->
+
+<div class="border_top right" style="padding: 0 0 0 0;">
+    <table cellpadding="1" cellspacing="1">
+        <tbody><tr>
+            <td class="left">
+<a href="http://validator.w3.org/check?uri=referer"><img src="doc.prototypes.ru%20%20%D0%A0%D0%B5%D0%BB%D1%8F%D1%86%D0%B8%D0%BE%D0%BD%D0%BD%D1%8B%D0%B5%20%D0%91%D0%94%20%20%D0%94%D0%B5%D1%80%D0%B5%D0%B2%D1%8C%D1%8F%20SQL%20%20Nested%20Sets%20%20%D0%A2%D0%B5%D0%BE%D1%80%D0%B8%D1%8F%20%20%D0%A3%D0%BF%D1%80%D0%B0%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5_files/valid-html401-blue.png" alt="Valid HTML 4.01 Transitional" height="31" width="88"></a>
+            </td>
+            <td>
+                <div style="padding: 10px 10px 10px 0; font-size: small;">Copyright © 2011 Сергей Томулевич</div>
+            </td>
+        </tr>
+    </tbody></table>
+</div>
+
+</body></html>
